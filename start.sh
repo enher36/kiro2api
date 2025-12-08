@@ -22,6 +22,10 @@ cd "$SCRIPT_DIR"
 ENV_FILE=".env"
 CONFIG_FILE=".kiro_config"
 
+# GitHub 仓库信息
+GITHUB_REPO="enher36/kiro2api"
+RELEASE_VERSION="v1.0.0"
+
 # ============================================================================
 # 工具函数
 # ============================================================================
@@ -108,6 +112,32 @@ detect_os() {
 # ============================================================================
 # 依赖安装
 # ============================================================================
+
+# 检查 Go 是否存在且版本 >= 1.23
+check_go_compatible() {
+    if ! command -v go &> /dev/null; then
+        return 1
+    fi
+
+    local version
+    version=$(go version 2>/dev/null | awk '{print $3}' | sed 's/go//')
+    if [[ -z "$version" ]]; then
+        return 1
+    fi
+
+    local major minor
+    major=$(echo "$version" | cut -d. -f1)
+    minor=$(echo "$version" | cut -d. -f2)
+
+    # 需要 Go 1.23+
+    if [[ "$major" -gt 1 ]] || [[ "$major" -eq 1 && "$minor" -ge 23 ]]; then
+        log_info "Go 已安装: v${version} (兼容)"
+        return 0
+    else
+        log_warn "Go 版本过低: v${version} (需要 1.23+)"
+        return 1
+    fi
+}
 
 check_go() {
     if command -v go &> /dev/null; then
@@ -213,6 +243,47 @@ install_dependencies() {
 }
 
 # ============================================================================
+# 下载预编译二进制
+# ============================================================================
+
+download_binary() {
+    log_step "下载预编译二进制文件..."
+
+    # 确定下载 URL
+    local os_name
+    case "$OSTYPE" in
+        linux*) os_name="linux" ;;
+        darwin*) os_name="darwin" ;;
+        *) log_error "不支持的操作系统: $OSTYPE"; return 1 ;;
+    esac
+
+    local binary_name="kiro2api-${os_name}-${ARCH_NAME}"
+    local download_url="https://github.com/${GITHUB_REPO}/releases/download/${RELEASE_VERSION}/${binary_name}"
+
+    log_info "下载地址: $download_url"
+
+    # 下载二进制文件
+    if command -v curl &> /dev/null; then
+        curl -L -o kiro2api "$download_url" || {
+            log_error "下载失败"
+            return 1
+        }
+    elif command -v wget &> /dev/null; then
+        wget -O kiro2api "$download_url" || {
+            log_error "下载失败"
+            return 1
+        }
+    else
+        log_error "需要 curl 或 wget 来下载文件"
+        return 1
+    fi
+
+    chmod +x kiro2api
+    log_info "下载完成: $(ls -lh kiro2api | awk '{print $5}')"
+    return 0
+}
+
+# ============================================================================
 # 编译项目
 # ============================================================================
 
@@ -238,6 +309,53 @@ build_project() {
         log_error "编译失败"
         exit 1
     fi
+}
+
+# ============================================================================
+# 获取或构建可执行文件
+# ============================================================================
+
+get_or_build_binary() {
+    log_step "准备可执行文件..."
+
+    # 如果已存在可执行文件，检查是否需要更新
+    if [[ -f "kiro2api" ]]; then
+        if [[ -f "main.go" ]] && [[ "main.go" -nt "kiro2api" ]]; then
+            log_warn "源码已更新，需要重新构建"
+        else
+            log_info "可执行文件已是最新"
+            return 0
+        fi
+    fi
+
+    # 优先尝试本地编译（如果 Go 版本兼容）
+    if check_go_compatible; then
+        log_info "使用本地 Go 编译..."
+        if build_project; then
+            return 0
+        fi
+        log_warn "本地编译失败，尝试下载预编译版本"
+    else
+        log_info "Go 版本不满足要求，尝试下载预编译版本"
+    fi
+
+    # 尝试下载预编译二进制
+    if download_binary; then
+        return 0
+    fi
+
+    # 如果下载失败，尝试安装/升级 Go 后编译
+    log_warn "下载失败，尝试安装 Go 1.23 后编译..."
+    install_go_manual
+
+    if check_go_compatible; then
+        if build_project; then
+            return 0
+        fi
+    fi
+
+    log_error "无法获取可执行文件，请检查网络连接或手动安装 Go 1.23+"
+    return 1
 }
 
 # ============================================================================
@@ -413,14 +531,19 @@ main() {
     # 1. 检测系统
     detect_os
 
-    # 2. 安装依赖
-    install_dependencies
+    # 2. 确保 curl/wget 可用
+    if ! command -v curl &> /dev/null && ! command -v wget &> /dev/null; then
+        log_warn "安装 curl..."
+        case $OS_ID in
+            ubuntu|debian) sudo apt-get install -y curl ;;
+            centos|rhel|fedora) sudo dnf install -y curl || sudo yum install -y curl ;;
+            arch|manjaro) sudo pacman -Sy --noconfirm curl ;;
+        esac
+    fi
 
-    # 3. 编译项目（如果需要）
-    if [[ ! -f "kiro2api" ]] || [[ "main.go" -nt "kiro2api" ]]; then
-        build_project
-    else
-        log_info "可执行文件已是最新，跳过编译"
+    # 3. 获取或构建可执行文件
+    if ! get_or_build_binary; then
+        exit 1
     fi
 
     # 4. 加载配置
