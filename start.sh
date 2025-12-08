@@ -121,7 +121,7 @@ check_go() {
 install_go() {
     log_step "安装 Go 语言环境..."
 
-    local GO_VERSION="1.24.0"
+    local GO_VERSION="1.23.4"
     local GO_TAR="go${GO_VERSION}.linux-${ARCH_NAME}.tar.gz"
     local GO_URL="https://go.dev/dl/${GO_TAR}"
 
@@ -168,7 +168,7 @@ install_go() {
 install_go_manual() {
     log_info "手动下载安装 Go..."
 
-    local GO_VERSION="1.24.0"
+    local GO_VERSION="1.23.4"
     local GO_TAR="go${GO_VERSION}.linux-${ARCH_NAME}.tar.gz"
     local GO_URL="https://go.dev/dl/${GO_TAR}"
 

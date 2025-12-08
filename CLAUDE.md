@@ -104,9 +104,9 @@ go build -ldflags="-s -w" -o kiro2api main.go
 
 ## 技术栈
 
-- **Go**: 1.24.0
+- **Go**: 1.23+
 - **Web**: gin-gonic/gin v1.11.0
-- **JSON**: encoding/json（标准库，替换 sonic 以兼容 Go 1.24）
+- **JSON**: encoding/json（标准库）
 
 ## 核心架构
 
@@ -135,7 +135,7 @@ go build -ldflags="-s -w" -o kiro2api main.go
 **内存管理**：
 - 已移除 `sync.Pool` 对象池（KISS + YAGNI）
 - 直接使用 `bytes.NewBuffer(nil)`、`strings.Builder`、`make([]byte, size)`
-- 信任 Go 1.24 GC 和逃逸分析
+- 信任 Go GC 和逃逸分析
 - 仅在 QPS > 1000 且对象 > 10KB 时考虑对象池
 
 **代码质量**：

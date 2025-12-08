@@ -4,7 +4,7 @@
 
 *统一 Anthropic Claude、OpenAI 和 AWS CodeWhisperer 的智能网关*
 
-[![Go](https://img.shields.io/badge/Go-1.24.0-blue.svg)](https://golang.org/)
+[![Go](https://img.shields.io/badge/Go-1.23+-blue.svg)](https://golang.org/)
 [![Gin](https://img.shields.io/badge/Gin-1.11.0-green.svg)](https://github.com/gin-gonic/gin)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
 
@@ -168,7 +168,7 @@ graph TB
 - **Web框架**: gin-gonic/gin v1.11.0
 - **JSON处理**: bytedance/sonic v1.14.1
 - **配置管理**: github.com/joho/godotenv v1.5.1
-- **Go版本**: 1.24.0
+- **Go版本**: 1.23+
 - **容器化**: Docker & Docker Compose 支持
 
 ## 快速开始
