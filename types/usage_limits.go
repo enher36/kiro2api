@@ -81,30 +81,36 @@ type TokenWithUsage struct {
 	TokenPreview    string       `json:"token_preview,omitempty"` // Token前缀预览
 }
 
-// GetAvailableCount 计算可用的调用次数 (基于CREDIT资源类型，返回浮点精度)
+// GetAvailableCount 计算可用的调用次数 (支持CREDIT和AGENTIC_REQUEST资源类型，返回浮点精度)
+// 优先级：CREDIT > AGENTIC_REQUEST
 func (t *TokenWithUsage) GetAvailableCount() float64 {
 	if t.UsageLimits == nil {
 		return 0.0
 	}
 
-	for _, breakdown := range t.UsageLimits.UsageBreakdownList {
-		if breakdown.ResourceType == "CREDIT" {
-			var totalAvailable float64
+	// 支持的资源类型优先级顺序
+	supportedTypes := []string{"CREDIT", "AGENTIC_REQUEST"}
 
-			// 优先使用免费试用额度 (如果存在且处于ACTIVE状态)
-			if breakdown.FreeTrialInfo != nil && breakdown.FreeTrialInfo.FreeTrialStatus == "ACTIVE" {
-				freeTrialAvailable := breakdown.FreeTrialInfo.UsageLimitWithPrecision - breakdown.FreeTrialInfo.CurrentUsageWithPrecision
-				totalAvailable += freeTrialAvailable
+	for _, targetType := range supportedTypes {
+		for _, breakdown := range t.UsageLimits.UsageBreakdownList {
+			if breakdown.ResourceType == targetType {
+				var totalAvailable float64
+
+				// 优先使用免费试用额度 (如果存在且处于ACTIVE状态)
+				if breakdown.FreeTrialInfo != nil && breakdown.FreeTrialInfo.FreeTrialStatus == "ACTIVE" {
+					freeTrialAvailable := breakdown.FreeTrialInfo.UsageLimitWithPrecision - breakdown.FreeTrialInfo.CurrentUsageWithPrecision
+					totalAvailable += freeTrialAvailable
+				}
+
+				// 加上基础额度
+				baseAvailable := breakdown.UsageLimitWithPrecision - breakdown.CurrentUsageWithPrecision
+				totalAvailable += baseAvailable
+
+				if totalAvailable < 0 {
+					return 0.0
+				}
+				return totalAvailable
 			}
-
-			// 加上基础额度
-			baseAvailable := breakdown.UsageLimitWithPrecision - breakdown.CurrentUsageWithPrecision
-			totalAvailable += baseAvailable
-
-			if totalAvailable < 0 {
-				return 0.0
-			}
-			return totalAvailable
 		}
 	}
 

@@ -257,28 +257,43 @@ func (ct *CachedToken) IsUsable() bool {
 // set 操作：直接通过 tm.cache.tokens[key] = value 完成
 // updateLastUsed 操作：已合并到 getBestToken 方法中
 
-// CalculateAvailableCount 计算可用次数 (基于CREDIT资源类型，返回浮点精度)
+// CalculateAvailableCount 计算可用次数 (支持CREDIT和AGENTIC_REQUEST资源类型，返回浮点精度)
+// 优先级：CREDIT > AGENTIC_REQUEST
 func CalculateAvailableCount(usage *types.UsageLimits) float64 {
-	for _, breakdown := range usage.UsageBreakdownList {
-		if breakdown.ResourceType == "CREDIT" {
-			var totalAvailable float64
+	// 支持的资源类型优先级顺序
+	supportedTypes := []string{"CREDIT", "AGENTIC_REQUEST"}
 
-			// 优先使用免费试用额度 (如果存在且处于ACTIVE状态)
-			if breakdown.FreeTrialInfo != nil && breakdown.FreeTrialInfo.FreeTrialStatus == "ACTIVE" {
-				freeTrialAvailable := breakdown.FreeTrialInfo.UsageLimitWithPrecision - breakdown.FreeTrialInfo.CurrentUsageWithPrecision
-				totalAvailable += freeTrialAvailable
+	for _, targetType := range supportedTypes {
+		for _, breakdown := range usage.UsageBreakdownList {
+			if breakdown.ResourceType == targetType {
+				var totalAvailable float64
+
+				// 优先使用免费试用额度 (如果存在且处于ACTIVE状态)
+				if breakdown.FreeTrialInfo != nil && breakdown.FreeTrialInfo.FreeTrialStatus == "ACTIVE" {
+					freeTrialAvailable := breakdown.FreeTrialInfo.UsageLimitWithPrecision - breakdown.FreeTrialInfo.CurrentUsageWithPrecision
+					totalAvailable += freeTrialAvailable
+				}
+
+				// 加上基础额度
+				baseAvailable := breakdown.UsageLimitWithPrecision - breakdown.CurrentUsageWithPrecision
+				totalAvailable += baseAvailable
+
+				logger.Debug("计算可用次数",
+					logger.String("resource_type", targetType),
+					logger.Float64("total_available", totalAvailable),
+					logger.Float64("base_limit", breakdown.UsageLimitWithPrecision),
+					logger.Float64("base_used", breakdown.CurrentUsageWithPrecision))
+
+				if totalAvailable < 0 {
+					return 0.0
+				}
+				return totalAvailable
 			}
-
-			// 加上基础额度
-			baseAvailable := breakdown.UsageLimitWithPrecision - breakdown.CurrentUsageWithPrecision
-			totalAvailable += baseAvailable
-
-			if totalAvailable < 0 {
-				return 0.0
-			}
-			return totalAvailable
 		}
 	}
+
+	logger.Warn("未找到支持的资源类型",
+		logger.Any("supported_types", supportedTypes))
 	return 0.0
 }
 
@@ -297,4 +312,49 @@ func generateConfigOrder(configs []AuthConfig) []string {
 		logger.Any("order", order))
 
 	return order
+}
+
+// AddConfig 动态添加认证配置
+func (tm *TokenManager) AddConfig(cfg AuthConfig) {
+	tm.mutex.Lock()
+	defer tm.mutex.Unlock()
+
+	// 添加到配置列表
+	tm.configs = append(tm.configs, cfg)
+
+	// 重新生成配置顺序
+	tm.configOrder = generateConfigOrder(tm.configs)
+
+	// 立即刷新新添加的token
+	index := len(tm.configs) - 1
+	token, err := tm.refreshSingleToken(cfg)
+	if err != nil {
+		logger.Warn("刷新新添加的token失败",
+			logger.Int("config_index", index),
+			logger.Err(err))
+		return
+	}
+
+	// 检查使用限制
+	var usageInfo *types.UsageLimits
+	var available float64
+
+	checker := NewUsageLimitsChecker()
+	if usage, checkErr := checker.CheckUsageLimits(token); checkErr == nil {
+		usageInfo = usage
+		available = CalculateAvailableCount(usage)
+	}
+
+	// 添加到缓存
+	cacheKey := fmt.Sprintf(config.TokenCacheKeyFormat, index)
+	tm.cache.tokens[cacheKey] = &CachedToken{
+		Token:     token,
+		UsageInfo: usageInfo,
+		CachedAt:  time.Now(),
+		Available: available,
+	}
+
+	logger.Info("成功添加并刷新token",
+		logger.String("cache_key", cacheKey),
+		logger.Float64("available", available))
 }

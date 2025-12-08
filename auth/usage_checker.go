@@ -88,8 +88,25 @@ func (c *UsageLimitsChecker) CheckUsageLimits(token types.TokenInfo) (*types.Usa
 
 // logUsageLimits 记录使用限制的关键信息
 func (c *UsageLimitsChecker) logUsageLimits(limits *types.UsageLimits) {
+	// 先记录所有返回的资源类型，便于调试
+	var resourceTypes []string
 	for _, breakdown := range limits.UsageBreakdownList {
-		if breakdown.ResourceType == "CREDIT" {
+		resourceTypes = append(resourceTypes, breakdown.ResourceType)
+	}
+	logger.Debug("API返回的资源类型列表",
+		logger.Any("resource_types", resourceTypes),
+		logger.Int("breakdown_count", len(limits.UsageBreakdownList)))
+
+	for _, breakdown := range limits.UsageBreakdownList {
+		// 记录每个资源类型的详细信息
+		logger.Debug("资源类型详情",
+			logger.String("resource_type", breakdown.ResourceType),
+			logger.Float64("usage_limit", breakdown.UsageLimitWithPrecision),
+			logger.Float64("current_usage", breakdown.CurrentUsageWithPrecision),
+			logger.String("unit", breakdown.Unit))
+
+		// 支持CREDIT和AGENTIC_REQUEST资源类型
+		if breakdown.ResourceType == "CREDIT" || breakdown.ResourceType == "AGENTIC_REQUEST" {
 			// 计算可用次数 (使用浮点精度数据)
 			var totalLimit float64
 			var totalUsed float64
@@ -112,7 +129,7 @@ func (c *UsageLimitsChecker) logUsageLimits(limits *types.UsageLimits) {
 
 			available := totalLimit - totalUsed
 
-			logger.Info("CREDIT使用状态",
+			logger.Info("使用状态",
 				logger.String("resource_type", breakdown.ResourceType),
 				logger.Float64("total_limit", totalLimit),
 				logger.Float64("total_used", totalUsed),
@@ -129,12 +146,11 @@ func (c *UsageLimitsChecker) logUsageLimits(limits *types.UsageLimits) {
 				}()))
 
 			if available <= 1 {
-				logger.Warn("CREDIT使用量即将耗尽",
+				logger.Warn("使用量即将耗尽",
+					logger.String("resource_type", breakdown.ResourceType),
 					logger.Float64("remaining", available),
 					logger.String("recommendation", "考虑切换到其他token"))
 			}
-
-			break
 		}
 	}
 

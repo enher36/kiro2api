@@ -488,18 +488,12 @@ func maskEmail(email string) string {
 }
 
 // handleTokenPoolAPI 处理Token池API请求 - 恢复多token显示
-func handleTokenPoolAPI(c *gin.Context) {
+func handleTokenPoolAPI(c *gin.Context, authService *auth.AuthService) {
 	var tokenList []any
 	var activeCount int
 
-	// 从auth包获取配置信息
-	configs, err := auth.GetConfigs()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "加载配置失败: " + err.Error(),
-		})
-		return
-	}
+	// 从AuthService获取当前内存中的配置信息，避免重新读取环境变量
+	configs := authService.GetConfigs()
 
 	if len(configs) == 0 {
 		c.JSON(http.StatusOK, gin.H{
@@ -580,28 +574,39 @@ func handleTokenPoolAPI(c *gin.Context) {
 			"status":          "active",
 		}
 
-		// 添加使用限制详细信息 (基于CREDIT资源类型)
+		// 添加使用限制详细信息 (支持CREDIT和AGENTIC_REQUEST资源类型)
 		if usageInfo != nil {
-			for _, breakdown := range usageInfo.UsageBreakdownList {
-				if breakdown.ResourceType == "CREDIT" {
-					var totalLimit float64
-					var totalUsed float64
+			// 支持的资源类型优先级顺序
+			supportedTypes := []string{"CREDIT", "AGENTIC_REQUEST"}
 
-					// 基础额度
-					totalLimit += breakdown.UsageLimitWithPrecision
-					totalUsed += breakdown.CurrentUsageWithPrecision
+			for _, targetType := range supportedTypes {
+				found := false
+				for _, breakdown := range usageInfo.UsageBreakdownList {
+					if breakdown.ResourceType == targetType {
+						var totalLimit float64
+						var totalUsed float64
 
-					// 免费试用额度
-					if breakdown.FreeTrialInfo != nil && breakdown.FreeTrialInfo.FreeTrialStatus == "ACTIVE" {
-						totalLimit += breakdown.FreeTrialInfo.UsageLimitWithPrecision
-						totalUsed += breakdown.FreeTrialInfo.CurrentUsageWithPrecision
+						// 基础额度
+						totalLimit += breakdown.UsageLimitWithPrecision
+						totalUsed += breakdown.CurrentUsageWithPrecision
+
+						// 免费试用额度
+						if breakdown.FreeTrialInfo != nil && breakdown.FreeTrialInfo.FreeTrialStatus == "ACTIVE" {
+							totalLimit += breakdown.FreeTrialInfo.UsageLimitWithPrecision
+							totalUsed += breakdown.FreeTrialInfo.CurrentUsageWithPrecision
+						}
+
+						tokenData["usage_limits"] = map[string]any{
+							"total_limit":   totalLimit, // 保留浮点精度
+							"current_usage": totalUsed,  // 保留浮点精度
+							"is_exceeded":   available <= 0,
+							"resource_type": targetType, // 显示使用的资源类型
+						}
+						found = true
+						break
 					}
-
-					tokenData["usage_limits"] = map[string]any{
-						"total_limit":   totalLimit, // 保留浮点精度
-						"current_usage": totalUsed,  // 保留浮点精度
-						"is_exceeded":   available <= 0,
-					}
+				}
+				if found {
 					break
 				}
 			}

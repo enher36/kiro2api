@@ -45,7 +45,12 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 	})
 
 	// API端点 - 纯数据服务
-	r.GET("/api/tokens", handleTokenPoolAPI)
+	r.GET("/api/tokens", func(c *gin.Context) {
+		handleTokenPoolAPI(c, authService)
+	})
+
+	// Token管理API（添加/删除）
+	registerTokenManagementRoutes(r, authService)
 
 	// GET /v1/models 端点
 	r.GET("/v1/models", func(c *gin.Context) {
