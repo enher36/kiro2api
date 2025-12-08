@@ -1,10 +1,17 @@
 package config
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func TestModelMap_ClaudeOpus45(t *testing.T) {
+	model, exists := ModelMap["claude-opus-4-5-20251101"]
+	assert.True(t, exists)
+	assert.Equal(t, "anthropic.claude-opus-4-5-20251101-v1:0", model)
+}
 
 func TestModelMap_ClaudeSonnet45(t *testing.T) {
 	model, exists := ModelMap["claude-sonnet-4-5-20250929"]
@@ -38,6 +45,7 @@ func TestModelMap_NonExistentModel(t *testing.T) {
 func TestModelMap_AllModelsHaveMapping(t *testing.T) {
 	// 确保所有模型都有对应的映射
 	expectedModels := []string{
+		"claude-opus-4-5-20251101",
 		"claude-sonnet-4-5-20250929",
 		"claude-sonnet-4-20250514",
 		"claude-3-7-sonnet-20250219",
@@ -52,12 +60,12 @@ func TestModelMap_AllModelsHaveMapping(t *testing.T) {
 
 func TestModelMap_MappingsAreCorrectFormat(t *testing.T) {
 	for inputModel, outputModel := range ModelMap {
-		// 输出模型应该是大写格式或"auto"
+		// 输出模型应该是大写格式、"auto" 或 anthropic.* 格式
 		if outputModel != "auto" {
-			assert.Contains(t, outputModel, "CLAUDE",
-				"Model mapping for %s should contain 'CLAUDE'", inputModel)
-			assert.Contains(t, outputModel, "_V1_0",
-				"Model mapping for %s should contain '_V1_0'", inputModel)
+			isLegacyFormat := strings.Contains(outputModel, "CLAUDE") && strings.Contains(outputModel, "_V1_0")
+			isNewFormat := strings.HasPrefix(outputModel, "anthropic.")
+			assert.True(t, isLegacyFormat || isNewFormat,
+				"Model mapping for %s should be in valid format, got: %s", inputModel, outputModel)
 		}
 	}
 }
