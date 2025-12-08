@@ -65,7 +65,9 @@ start_container() {
     KIRO_CLIENT_TOKEN="${KIRO_CLIENT_TOKEN:-$(generate_password 32)}"
 
     # 创建数据目录（用于持久化配置）
+    # 设置 777 权限确保容器内 appuser(UID 1001) 可写
     mkdir -p "$(pwd)/data"
+    chmod 777 "$(pwd)/data"
 
     docker run -d \
         --name "$CONTAINER_NAME" \
