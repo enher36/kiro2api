@@ -37,8 +37,9 @@ COPY --from=builder /app/kiro2api .
 COPY --from=builder /app/static ./static
 
 # 创建数据目录并设置权限
-RUN mkdir -p /home/appuser/.aws/sso/cache && \
-    chown -R appuser:appgroup /app /home/appuser
+RUN mkdir -p /app/data /home/appuser/.aws/sso/cache && \
+    chown -R appuser:appgroup /app /home/appuser && \
+    chmod 755 /app/data
 
 USER appuser
 

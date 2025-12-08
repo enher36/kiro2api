@@ -59,19 +59,23 @@ build_image() {
 # 启动容器
 start_container() {
     log_step "启动容器..."
-    
+
     # 生成密码
     ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(generate_password 16)}"
     KIRO_CLIENT_TOKEN="${KIRO_CLIENT_TOKEN:-$(generate_password 32)}"
-    
+
+    # 创建数据目录（用于持久化配置）
+    mkdir -p "$(pwd)/data"
+
     docker run -d \
         --name "$CONTAINER_NAME" \
         -p "${PORT}:8080" \
         -e ADMIN_USERNAME="${ADMIN_USERNAME:-admin}" \
         -e ADMIN_PASSWORD="$ADMIN_PASSWORD" \
         -e KIRO_CLIENT_TOKEN="$KIRO_CLIENT_TOKEN" \
+        -e AUTH_CONFIG_FILE="/app/data/auth_config.json" \
         -e GIN_MODE=release \
-        -v "$(pwd)/auth_config.json:/app/auth_config.json:rw" \
+        -v "$(pwd)/data:/app/data" \
         --restart unless-stopped \
         "$IMAGE_NAME"
     
@@ -127,10 +131,6 @@ main() {
     
     check_docker
     stop_existing
-    
-    # 如果 auth_config.json 不存在，创建空文件
-    [[ -f "auth_config.json" ]] || echo "[]" > auth_config.json
-    
     build_image
     start_container
     show_result

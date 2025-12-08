@@ -21,10 +21,16 @@ type AuthConfig struct {
 const (
 	AuthMethodSocial = "Social"
 	AuthMethodIdC    = "IdC"
-
-	// defaultConfigFile 默认配置文件路径，用于持久化 Web 添加的 Token
-	defaultConfigFile = "auth_config.json"
 )
+
+// getDefaultConfigFile 获取默认配置文件路径
+// 优先使用环境变量 AUTH_CONFIG_FILE，否则使用当前目录的 auth_config.json
+func getDefaultConfigFile() string {
+	if path := os.Getenv("AUTH_CONFIG_FILE"); path != "" {
+		return path
+	}
+	return "auth_config.json"
+}
 
 // loadConfigs 从环境变量加载配置（保持向后兼容）
 func loadConfigs() ([]AuthConfig, error) {
@@ -52,7 +58,7 @@ func loadConfigsWithPath() ([]AuthConfig, string, error) {
 		}
 	}
 
-	configFilePath := defaultConfigFile
+	configFilePath := getDefaultConfigFile()
 	jsonData := os.Getenv("KIRO_AUTH_TOKEN")
 
 	// 优先级 1: 环境变量指向的文件

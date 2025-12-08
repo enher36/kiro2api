@@ -10,6 +10,11 @@ services:
       - KIRO_AUTH_TOKEN=${KIRO_AUTH_TOKEN}
       # 客户端认证Token
       - KIRO_CLIENT_TOKEN=${KIRO_CLIENT_TOKEN:-123456}
+      # 管理员配置
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?请设置 ADMIN_PASSWORD 环境变量}
+      # 配置文件路径（使用数据卷以确保权限正确）
+      - AUTH_CONFIG_FILE=/app/data/auth_config.json
       # 服务配置
       - PORT=${PORT:-8080}
       - GIN_MODE=${GIN_MODE:-release}
@@ -20,6 +25,7 @@ services:
       - LOG_FILE=${LOG_FILE:-}
     volumes:
       - aws_sso_cache:/home/appuser/.aws/sso/cache
+      - kiro_data:/app/data
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/v1/models"]
       interval: 30s
@@ -29,3 +35,4 @@ services:
 
 volumes:
   aws_sso_cache:
+  kiro_data:
