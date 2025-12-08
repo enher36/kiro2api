@@ -219,6 +219,27 @@ pkill -f kiro2api    # 停止服务
 tail -f kiro2api.log # 查看日志
 ```
 
+### Docker 启动（无需 Go 环境）
+
+如果系统 Go 版本过低或无法安装 Go，可以使用 Docker：
+
+```bash
+# 克隆项目
+git clone https://github.com/enher36/kiro2api.git
+cd kiro2api
+
+# Docker 一键启动
+chmod +x start-docker.sh
+./start-docker.sh
+```
+
+**常用命令**：
+```bash
+docker logs -f kiro2api    # 查看日志
+docker stop kiro2api       # 停止服务
+docker restart kiro2api    # 重启服务
+```
+
 ### 基础运行
 
 ```bash
