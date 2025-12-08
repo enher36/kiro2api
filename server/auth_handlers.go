@@ -19,27 +19,27 @@ const (
 
 // AuthHandlers 认证相关的HTTP处理器
 type AuthHandlers struct {
-	manager      *SessionManager
-	adminUser    string
-	adminPass    string
-	secureCookie bool
-	idleTimeout  time.Duration
-	limiter      *loginRateLimiter
+	manager     *SessionManager
+	adminUser   string
+	adminPass   string
+	idleTimeout time.Duration
+	limiter     *loginRateLimiter
 }
 
 // NewAuthHandlers 创建认证处理器
 func NewAuthHandlers(manager *SessionManager, adminUser, adminPass string, idleTimeout time.Duration) *AuthHandlers {
-	// 根据 gin 模式判断是否使用 Secure cookie
-	secureCookie := gin.Mode() == gin.ReleaseMode
-
 	return &AuthHandlers{
-		manager:      manager,
-		adminUser:    adminUser,
-		adminPass:    adminPass,
-		secureCookie: secureCookie,
-		idleTimeout:  idleTimeout,
-		limiter:      newLoginRateLimiter(10, 10*time.Minute), // 10分钟内最多10次尝试
+		manager:     manager,
+		adminUser:   adminUser,
+		adminPass:   adminPass,
+		idleTimeout: idleTimeout,
+		limiter:     newLoginRateLimiter(10, 10*time.Minute), // 10分钟内最多10次尝试
 	}
+}
+
+// isSecureRequest 判断请求是否通过 HTTPS
+func isSecureRequest(c *gin.Context) bool {
+	return c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
 }
 
 // LoginRequest 登录请求结构
@@ -107,7 +107,7 @@ func (h *AuthHandlers) HandleLogin(c *gin.Context) {
 		maxAge = 1800 // 默认30分钟
 	}
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(sessionCookieName, session.ID, maxAge, "/", "", h.secureCookie, true)
+	c.SetCookie(sessionCookieName, session.ID, maxAge, "/", "", isSecureRequest(c), true)
 
 	logger.Info("用户登录成功",
 		logger.String("username", req.Username),
@@ -128,7 +128,7 @@ func (h *AuthHandlers) HandleLogout(c *gin.Context) {
 
 	// 清除cookie
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(sessionCookieName, "", -1, "/", "", h.secureCookie, true)
+	c.SetCookie(sessionCookieName, "", -1, "/", "", isSecureRequest(c), true)
 
 	user := GetSessionUser(c)
 	if user != "" {
