@@ -10,7 +10,7 @@ import (
 func TestModelMap_ClaudeOpus45(t *testing.T) {
 	model, exists := ModelMap["claude-opus-4-5-20251101"]
 	assert.True(t, exists)
-	assert.Equal(t, "claude-opus-4-5-20251101", model)
+	assert.Equal(t, "CLAUDE_OPUS_4_5_20251101_V1_0", model)
 }
 
 func TestModelMap_ClaudeSonnet45(t *testing.T) {
