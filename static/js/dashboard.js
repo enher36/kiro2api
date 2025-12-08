@@ -20,7 +20,57 @@ class TokenDashboard {
      */
     init() {
         this.bindEvents();
+        this.checkSession(); // 检查会话状态
         this.refreshTokens();
+    }
+
+    /**
+     * 从 cookie 获取 CSRF token
+     */
+    getCsrfToken() {
+        const match = document.cookie.split('; ').find(row => row.startsWith('csrf_token='));
+        return match ? decodeURIComponent(match.split('=')[1]) : '';
+    }
+
+    /**
+     * 检查会话状态，显示/隐藏登出按钮
+     */
+    async checkSession() {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/session`);
+            if (response.ok) {
+                const data = await response.json();
+                const logoutBtn = document.getElementById('logoutBtn');
+                if (logoutBtn) {
+                    logoutBtn.style.display = data.authenticated ? 'inline-block' : 'none';
+                }
+            }
+        } catch (error) {
+            // 会话检查失败，可能未启用登录系统
+            console.debug('会话检查失败:', error);
+        }
+    }
+
+    /**
+     * 登出
+     */
+    async logout() {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/logout`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-Token': this.getCsrfToken()
+                }
+            });
+            if (response.ok) {
+                window.location.href = '/static/login.html';
+            } else {
+                this.showToast('登出失败', 'error');
+            }
+        } catch (error) {
+            console.error('登出请求失败:', error);
+            this.showToast('网络错误', 'error');
+        }
     }
 
     /**
@@ -324,7 +374,8 @@ class TokenDashboard {
             const response = await fetch(`${this.apiBaseUrl}/tokens`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': this.getCsrfToken()
                 },
                 body: JSON.stringify(data)
             });
@@ -379,7 +430,10 @@ class TokenDashboard {
 
         try {
             const response = await fetch(`${this.apiBaseUrl}/tokens/${this.pendingDeleteIndex}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: {
+                    'X-CSRF-Token': this.getCsrfToken()
+                }
             });
 
             const result = await response.json();

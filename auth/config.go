@@ -21,10 +21,19 @@ type AuthConfig struct {
 const (
 	AuthMethodSocial = "Social"
 	AuthMethodIdC    = "IdC"
+
+	// defaultConfigFile 默认配置文件路径，用于持久化 Web 添加的 Token
+	defaultConfigFile = "auth_config.json"
 )
 
-// loadConfigs 从环境变量加载配置
+// loadConfigs 从环境变量加载配置（保持向后兼容）
 func loadConfigs() ([]AuthConfig, error) {
+	configs, _, err := loadConfigsWithPath()
+	return configs, err
+}
+
+// loadConfigsWithPath 加载配置并返回用于持久化的文件路径
+func loadConfigsWithPath() ([]AuthConfig, string, error) {
 	// 检测并警告弃用的环境变量
 	deprecatedVars := []string{
 		"REFRESH_TOKEN",
@@ -43,57 +52,62 @@ func loadConfigs() ([]AuthConfig, error) {
 		}
 	}
 
-	// 只支持KIRO_AUTH_TOKEN的JSON格式（支持文件路径或JSON字符串）
+	configFilePath := defaultConfigFile
 	jsonData := os.Getenv("KIRO_AUTH_TOKEN")
-	if jsonData == "" {
-		return nil, fmt.Errorf("未找到KIRO_AUTH_TOKEN环境变量\n" +
-			"请设置: KIRO_AUTH_TOKEN='[{\"auth\":\"Social\",\"refreshToken\":\"your_token\"}]'\n" +
-			"或设置为配置文件路径: KIRO_AUTH_TOKEN=/path/to/config.json\n" +
-			"支持的认证方式: Social, IdC\n" +
-			"详细配置请参考: .env.example")
-	}
 
-	// 优先尝试从文件加载，失败后再作为JSON字符串处理
-	var configData string
-	if fileInfo, err := os.Stat(jsonData); err == nil && !fileInfo.IsDir() {
-		// 是文件，读取文件内容
-		content, err := os.ReadFile(jsonData)
-		if err != nil {
-			return nil, fmt.Errorf("读取配置文件失败: %w\n配置文件路径: %s", err, jsonData)
+	// 优先级 1: 环境变量指向的文件
+	if jsonData != "" {
+		if fileInfo, err := os.Stat(jsonData); err == nil && !fileInfo.IsDir() {
+			configs, err := loadConfigsFromFile(jsonData)
+			if err != nil {
+				return nil, jsonData, err
+			}
+			return configs, jsonData, nil
 		}
-		configData = string(content)
-		logger.Info("从文件加载认证配置", logger.String("文件路径", jsonData))
-	} else {
-		// 不是文件或文件不存在，作为JSON字符串处理
-		configData = jsonData
-		logger.Debug("从环境变量加载JSON配置")
 	}
 
-	// 解析JSON配置
-	configs, err := parseJSONConfig(configData)
+	// 优先级 2: 默认配置文件
+	if fileInfo, err := os.Stat(configFilePath); err == nil && !fileInfo.IsDir() {
+		configs, err := loadConfigsFromFile(configFilePath)
+		if err != nil {
+			return nil, configFilePath, err
+		}
+		return configs, configFilePath, nil
+	}
+
+	// 优先级 3: 环境变量 JSON 字符串
+	if jsonData == "" {
+		logger.Info("未配置KIRO_AUTH_TOKEN，服务将以空Token池启动")
+		logger.Info("可通过Web界面添加账号，配置将自动保存到文件",
+			logger.String("config_file", configFilePath))
+		return []AuthConfig{}, configFilePath, nil
+	}
+
+	// 作为JSON字符串处理
+	logger.Debug("从环境变量加载JSON配置")
+	configs, err := parseJSONConfig(jsonData)
 	if err != nil {
-		return nil, fmt.Errorf("解析KIRO_AUTH_TOKEN失败: %w\n"+
+		return nil, configFilePath, fmt.Errorf("解析KIRO_AUTH_TOKEN失败: %w\n"+
 			"请检查JSON格式是否正确\n"+
 			"示例: KIRO_AUTH_TOKEN='[{\"auth\":\"Social\",\"refreshToken\":\"token1\"}]'", err)
 	}
 
 	if len(configs) == 0 {
-		return nil, fmt.Errorf("KIRO_AUTH_TOKEN配置为空，请至少提供一个有效的认证配置")
+		logger.Info("KIRO_AUTH_TOKEN配置为空数组，服务将以空Token池启动")
+		return []AuthConfig{}, configFilePath, nil
 	}
 
 	validConfigs := processConfigs(configs)
 	if len(validConfigs) == 0 {
-		return nil, fmt.Errorf("没有有效的认证配置\n" +
-			"请检查: \n" +
-			"1. Social认证需要refreshToken字段\n" +
-			"2. IdC认证需要refreshToken、clientId、clientSecret字段")
+		logger.Warn("没有有效的认证配置，服务将以空Token池启动")
+		return []AuthConfig{}, configFilePath, nil
 	}
 
 	logger.Info("成功加载认证配置",
 		logger.Int("总配置数", len(configs)),
 		logger.Int("有效配置数", len(validConfigs)))
 
-	return validConfigs, nil
+	return validConfigs, configFilePath, nil
 }
 
 // GetConfigs 公开的配置获取函数，供其他包调用
@@ -150,4 +164,55 @@ func processConfigs(configs []AuthConfig) []AuthConfig {
 	}
 
 	return validConfigs
+}
+
+// loadConfigsFromFile 从指定路径加载并验证配置
+func loadConfigsFromFile(path string) ([]AuthConfig, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("读取配置文件失败: %w\n配置文件路径: %s", err, path)
+	}
+
+	configs, err := parseJSONConfig(string(content))
+	if err != nil {
+		return nil, fmt.Errorf("解析配置文件失败: %w\n配置文件路径: %s", err, path)
+	}
+
+	if len(configs) == 0 {
+		logger.Info("配置文件为空，服务将以空Token池启动",
+			logger.String("file_path", path))
+		return []AuthConfig{}, nil
+	}
+
+	validConfigs := processConfigs(configs)
+	if len(validConfigs) == 0 {
+		logger.Warn("配置文件中没有有效的认证配置，将以空Token池启动",
+			logger.String("file_path", path))
+		return []AuthConfig{}, nil
+	}
+
+	logger.Info("从文件加载认证配置",
+		logger.String("file_path", path),
+		logger.Int("total_count", len(configs)),
+		logger.Int("valid_count", len(validConfigs)))
+
+	return validConfigs, nil
+}
+
+// SaveConfigsToFile 将配置持久化到文件（导出供 AuthService 使用）
+func SaveConfigsToFile(path string, configs []AuthConfig) error {
+	data, err := json.MarshalIndent(configs, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化认证配置失败: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("写入配置文件失败: %w\n配置文件路径: %s", err, path)
+	}
+
+	logger.Info("认证配置已持久化到文件",
+		logger.String("file_path", path),
+		logger.Int("config_count", len(configs)))
+
+	return nil
 }

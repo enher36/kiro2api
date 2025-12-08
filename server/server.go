@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"kiro2api/auth"
 	"kiro2api/config"
@@ -38,19 +39,66 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 	// 只对 /v1 开头的端点进行认证
 	r.Use(PathBasedAuthMiddleware(authToken, []string{"/v1"}))
 
-	// 静态资源服务 - 前后端完全分离
+	// ==================== 登录系统配置 ====================
+	adminUser := utils.GetEnvWithDefault("ADMIN_USERNAME", "admin")
+	adminPass := os.Getenv("ADMIN_PASSWORD")
+
+	// 强制要求设置管理员密码
+	if adminPass == "" {
+		logger.Error("启动失败: 未设置 ADMIN_PASSWORD 环境变量")
+		logger.Error("请设置管理员密码后重新启动:")
+		logger.Error("  ADMIN_PASSWORD=your_password ./kiro2api")
+		os.Exit(1)
+	}
+
+	// 初始化会话管理器
+	idleMinutes := utils.GetEnvIntWithDefault("SESSION_IDLE_MINUTES", 30)
+	absoluteHours := utils.GetEnvIntWithDefault("SESSION_ABSOLUTE_HOURS", 12)
+	idleTimeout := time.Duration(idleMinutes) * time.Minute
+	absoluteTimeout := time.Duration(absoluteHours) * time.Hour
+
+	sessionManager := NewSessionManager(idleTimeout, absoluteTimeout)
+	authHandlers := NewAuthHandlers(sessionManager, adminUser, adminPass, idleTimeout)
+
+	// 注册会话中间件（全局）
+	r.Use(SessionMiddleware(sessionManager))
+
+	logger.Info("登录系统已启用",
+		logger.String("admin_user", adminUser),
+		logger.Int("session_idle_minutes", idleMinutes),
+		logger.Int("session_absolute_hours", absoluteHours))
+
+	// 判断是否使用 Secure cookie（生产模式启用）
+	secureCookie := gin.Mode() == gin.ReleaseMode
+
+	// 注册 CSRF 中间件（全局）- 对所有请求发放 token，仅对非安全方法验证
+	r.Use(CSRFMiddleware(secureCookie))
+
+	// ==================== 静态资源服务 ====================
 	r.Static("/static", "./static")
-	r.GET("/", func(c *gin.Context) {
+
+	// Dashboard 首页（需要登录）
+	r.GET("/", DashboardAuthGuard(), func(c *gin.Context) {
 		c.File("./static/index.html")
 	})
 
-	// API端点 - 纯数据服务
-	r.GET("/api/tokens", func(c *gin.Context) {
+	// ==================== 认证API端点 ====================
+	r.POST("/api/login", authHandlers.HandleLogin)
+	r.POST("/api/logout", authHandlers.HandleLogout)
+	r.GET("/api/session", authHandlers.HandleSessionCheck)
+
+	// ==================== Token管理API（受保护）====================
+	adminAPI := r.Group("/api")
+	adminAPI.Use(AdminAPIAuthGuard())
+	adminAPI.GET("/tokens", func(c *gin.Context) {
 		handleTokenPoolAPI(c, authService)
 	})
-
-	// Token管理API（添加/删除）
-	registerTokenManagementRoutes(r, authService)
+	adminAPI.POST("/tokens", func(c *gin.Context) {
+		handleAddToken(c, authService)
+	})
+	adminAPI.DELETE("/tokens/:index", func(c *gin.Context) {
+		handleDeleteToken(c, authService)
+	})
 
 	// GET /v1/models 端点
 	r.GET("/v1/models", func(c *gin.Context) {
@@ -233,9 +281,14 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 		logger.String("auth_token", "***"))
 	logger.Info("AuthToken 验证已启用")
 	logger.Info("可用端点:")
-	logger.Info("  GET  /                          - 重定向到静态Dashboard")
+	logger.Info("  GET  /                          - Dashboard首页")
 	logger.Info("  GET  /static/*                  - 静态资源服务")
+	logger.Info("  POST /api/login                 - 登录接口")
+	logger.Info("  POST /api/logout                - 登出接口")
+	logger.Info("  GET  /api/session               - 会话状态检查")
 	logger.Info("  GET  /api/tokens                - Token池状态API")
+	logger.Info("  POST /api/tokens                - 添加Token")
+	logger.Info("  DELETE /api/tokens/:index       - 删除Token")
 	logger.Info("  GET  /v1/models                 - 模型列表")
 	logger.Info("  POST /v1/messages               - Anthropic API代理")
 	logger.Info("  POST /v1/messages/count_tokens  - Token计数接口")
@@ -260,8 +313,8 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key, X-CSRF-Token")
 
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(http.StatusOK)

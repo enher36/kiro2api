@@ -17,6 +17,11 @@ tmp/
 temp/
 *.tmp
 
+# 运行时文件
+.kiro_config
+*.pid
+kiro2api.log
+
 # 测试数据
 test/raw_data_replay/
 

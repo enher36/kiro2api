@@ -8,16 +8,17 @@ import (
 
 // AuthService 认证服务（推荐使用依赖注入方式）
 type AuthService struct {
-	tokenManager *TokenManager
-	configs      []AuthConfig
+	tokenManager   *TokenManager
+	configs        []AuthConfig
+	configFilePath string // 配置文件路径，用于持久化
 }
 
 // NewAuthService 创建新的认证服务（推荐使用此方法而不是全局函数）
 func NewAuthService() (*AuthService, error) {
 	logger.Info("创建AuthService实例")
 
-	// 加载配置
-	configs, err := loadConfigs()
+	// 加载配置（同时获取配置文件路径用于后续持久化）
+	configs, configFilePath, err := loadConfigsWithPath()
 	if err != nil {
 		return nil, fmt.Errorf("加载配置失败: %w", err)
 	}
@@ -26,8 +27,9 @@ func NewAuthService() (*AuthService, error) {
 	if len(configs) == 0 {
 		logger.Info("AuthService以空Token池启动，可通过API添加账号")
 		return &AuthService{
-			tokenManager: NewTokenManager(configs),
-			configs:      configs,
+			tokenManager:   NewTokenManager(configs),
+			configs:        configs,
+			configFilePath: configFilePath,
 		}, nil
 	}
 
@@ -43,8 +45,9 @@ func NewAuthService() (*AuthService, error) {
 	logger.Info("AuthService创建完成", logger.Int("config_count", len(configs)))
 
 	return &AuthService{
-		tokenManager: tokenManager,
-		configs:      configs,
+		tokenManager:   tokenManager,
+		configs:        configs,
+		configFilePath: configFilePath,
 	}, nil
 }
 
@@ -96,12 +99,19 @@ func (as *AuthService) AddConfig(config AuthConfig) error {
 	// 添加到配置列表
 	as.configs = append(as.configs, config)
 
+	// 持久化到文件（失败时回滚）
+	if err := SaveConfigsToFile(as.configFilePath, as.configs); err != nil {
+		as.configs = as.configs[:len(as.configs)-1] // 回滚
+		return fmt.Errorf("持久化配置失败: %w", err)
+	}
+
 	// 更新TokenManager
 	as.tokenManager.AddConfig(config)
 
 	logger.Info("动态添加认证配置",
 		logger.String("auth_type", config.AuthType),
-		logger.Int("total_configs", len(as.configs)))
+		logger.Int("total_configs", len(as.configs)),
+		logger.String("config_file", as.configFilePath))
 
 	return nil
 }
@@ -112,15 +122,28 @@ func (as *AuthService) RemoveConfig(index int) error {
 		return fmt.Errorf("无效的配置索引: %d", index)
 	}
 
+	// 保存原始状态用于回滚
+	previousConfigs := make([]AuthConfig, len(as.configs))
+	copy(previousConfigs, as.configs)
+	previousManager := as.tokenManager
+
 	// 从配置列表中移除
 	as.configs = append(as.configs[:index], as.configs[index+1:]...)
+
+	// 持久化到文件（失败时回滚）
+	if err := SaveConfigsToFile(as.configFilePath, as.configs); err != nil {
+		as.configs = previousConfigs
+		as.tokenManager = previousManager
+		return fmt.Errorf("持久化配置失败: %w", err)
+	}
 
 	// 重建TokenManager
 	as.tokenManager = NewTokenManager(as.configs)
 
 	logger.Info("移除认证配置",
 		logger.Int("removed_index", index),
-		logger.Int("remaining_configs", len(as.configs)))
+		logger.Int("remaining_configs", len(as.configs)),
+		logger.String("config_file", as.configFilePath))
 
 	return nil
 }
