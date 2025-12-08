@@ -10,7 +10,7 @@ import (
 func TestModelMap_ClaudeOpus45(t *testing.T) {
 	model, exists := ModelMap["claude-opus-4-5-20251101"]
 	assert.True(t, exists)
-	assert.Equal(t, "anthropic.claude-opus-4-5-20251101-v1:0", model)
+	assert.Equal(t, "claude-opus-4-5-20251101", model)
 }
 
 func TestModelMap_ClaudeSonnet45(t *testing.T) {
@@ -60,11 +60,12 @@ func TestModelMap_AllModelsHaveMapping(t *testing.T) {
 
 func TestModelMap_MappingsAreCorrectFormat(t *testing.T) {
 	for inputModel, outputModel := range ModelMap {
-		// 输出模型应该是大写格式、"auto" 或 anthropic.* 格式
+		// 输出模型应该是大写格式、"auto"、anthropic.* 格式或 claude-* 格式
 		if outputModel != "auto" {
 			isLegacyFormat := strings.Contains(outputModel, "CLAUDE") && strings.Contains(outputModel, "_V1_0")
-			isNewFormat := strings.HasPrefix(outputModel, "anthropic.")
-			assert.True(t, isLegacyFormat || isNewFormat,
+			isAnthropicFormat := strings.HasPrefix(outputModel, "anthropic.")
+			isDirectFormat := strings.HasPrefix(outputModel, "claude-")
+			assert.True(t, isLegacyFormat || isAnthropicFormat || isDirectFormat,
 				"Model mapping for %s should be in valid format, got: %s", inputModel, outputModel)
 		}
 	}
