@@ -68,11 +68,9 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 		logger.Int("session_idle_minutes", idleMinutes),
 		logger.Int("session_absolute_hours", absoluteHours))
 
-	// 判断是否使用 Secure cookie（生产模式启用）
-	secureCookie := gin.Mode() == gin.ReleaseMode
-
 	// 注册 CSRF 中间件（全局）- 对所有请求发放 token，仅对非安全方法验证
-	r.Use(CSRFMiddleware(secureCookie))
+	// Secure cookie 属性现在基于实际请求协议自动判断（HTTP/HTTPS）
+	r.Use(CSRFMiddleware(false))
 
 	// ==================== 静态资源服务 ====================
 	r.Static("/static", "./static")

@@ -89,7 +89,7 @@ func GetSessionID(c *gin.Context) string {
 // CSRFMiddleware 使用双提交 Cookie 模式验证 CSRF token
 // 保护所有非安全 HTTP 方法（POST, PUT, PATCH, DELETE）
 // 跳过 /v1 开头的 API 路由（外部客户端 API 使用 Authorization header）
-func CSRFMiddleware(secureCookie bool) gin.HandlerFunc {
+func CSRFMiddleware(_ bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 跳过 /v1 API 路由（外部 API 使用 token 认证，不需要 CSRF）
 		if strings.HasPrefix(c.Request.URL.Path, "/v1") {
@@ -115,13 +115,16 @@ func CSRFMiddleware(secureCookie bool) gin.HandlerFunc {
 				return
 			}
 			token = newToken
+			// 基于实际请求协议判断是否使用 Secure cookie
+			// 支持直接 HTTPS 和反向代理（X-Forwarded-Proto）
+			isSecure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
 			http.SetCookie(c.Writer, &http.Cookie{
 				Name:     csrfTokenCookieName,
 				Value:    token,
 				Path:     "/",
 				HttpOnly: false, // 前端需要读取
 				SameSite: http.SameSiteLaxMode,
-				Secure:   secureCookie,
+				Secure:   isSecure,
 				MaxAge:   3600, // 1小时
 			})
 		}
