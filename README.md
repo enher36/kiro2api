@@ -173,11 +173,57 @@ graph TB
 
 ## 快速开始
 
+### 一键启动（推荐）
+
+```bash
+# 克隆项目
+git clone https://github.com/enher36/kiro2api.git
+cd kiro2api
+
+# 一键启动（自动安装依赖、编译、生成密码、启动服务）
+chmod +x start.sh
+./start.sh
+```
+
+脚本会自动完成以下操作：
+- 检测系统版本（支持 Ubuntu/Debian/CentOS/Fedora/Arch/macOS）
+- 安装 Go 语言环境（如未安装）
+- 编译项目
+- 生成随机管理员密码和 API Token
+- 启动服务并显示访问信息
+
+启动成功后会显示：
+```
+╔═══════════════════════════════════════════════════════════════════╗
+║                      服务启动成功！                               ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+━━━━━━━━━━━━━━━━━━━━━━ 访问地址 ━━━━━━━━━━━━━━━━━━━━━━
+  本地访问:    http://localhost:8080/
+  局域网访问:  http://192.168.x.x:8080/
+
+━━━━━━━━━━━━━━━━━━━━━━ 管理后台 ━━━━━━━━━━━━━━━━━━━━━━
+  登录地址:    http://localhost:8080/static/login.html
+  用户名:      admin
+  密码:        <自动生成的随机密码>
+
+━━━━━━━━━━━━━━━━━━━━━━ API 配置 ━━━━━━━━━━━━━━━━━━━━━━
+  API 端点:    http://localhost:8080/v1/messages
+  API Token:   <自动生成的随机Token>
+```
+
+**常用命令**：
+```bash
+./start.sh           # 启动/重启服务
+pkill -f kiro2api    # 停止服务
+tail -f kiro2api.log # 查看日志
+```
+
 ### 基础运行
 
 ```bash
 # 克隆并编译
-git clone <repository-url>
+git clone https://github.com/enher36/kiro2api.git
 cd kiro2api
 go build -o kiro2api main.go
 
