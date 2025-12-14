@@ -292,12 +292,15 @@ build_project() {
 
     if [[ ! -f "go.mod" ]]; then
         log_error "未找到 go.mod 文件，请确保在项目目录中运行"
-        exit 1
+        return 1
     fi
 
     # 下载依赖
     log_info "下载依赖包..."
-    go mod tidy
+    go mod tidy || {
+        log_error "依赖下载失败"
+        return 1
+    }
 
     # 编译
     log_info "编译可执行文件..."
@@ -305,9 +308,10 @@ build_project() {
 
     if [[ -f "kiro2api" ]]; then
         log_info "编译成功: $(ls -lh kiro2api | awk '{print $5}')"
+        return 0
     else
         log_error "编译失败"
-        exit 1
+        return 1
     fi
 }
 
